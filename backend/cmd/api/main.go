@@ -90,7 +90,7 @@ func main() {
 		Addr:         fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port),
 		Handler:      router,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 60 * time.Second, // Increased to handle parallel HSP API calls
 		IdleTimeout:  120 * time.Second,
 	}
 

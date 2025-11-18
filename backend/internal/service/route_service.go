@@ -96,30 +96,47 @@ func (s *RouteService) fetchAndComputeMetrics(
 	var allResponses []*external.HSPServiceMetricsResponse
 
 	if query.DayFilter == "all" {
-		// Query all three day types
-		for _, dayType := range []string{"WEEKDAY", "SATURDAY", "SUNDAY"} {
-			hspReq := external.HSPServiceMetricsRequest{
-				FromLoc:  query.OriginCRS,
-				ToLoc:    query.DestinationCRS,
-				FromTime: fromTime,
-				ToTime:   toTime,
-				FromDate: startDate.Format("2006-01-02"),
-				ToDate:   endDate.Format("2006-01-02"),
-				Days:     &dayType,
-			}
+		// Query all three day types in parallel for better performance
+		type result struct {
+			resp    *external.HSPServiceMetricsResponse
+			dayType string
+			err     error
+		}
 
-			s.logger.Info("Querying HSP API",
-				zap.String("from", query.OriginCRS),
-				zap.String("to", query.DestinationCRS),
-				zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
-				zap.String("days", dayType),
-			)
+		results := make(chan result, 3)
+		dayTypes := []string{"WEEKDAY", "SATURDAY", "SUNDAY"}
 
-			hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
-			if err != nil {
-				return nil, fmt.Errorf("HSP API error for %s: %w", dayType, err)
+		for _, dayType := range dayTypes {
+			go func(dt string) {
+				hspReq := external.HSPServiceMetricsRequest{
+					FromLoc:  query.OriginCRS,
+					ToLoc:    query.DestinationCRS,
+					FromTime: fromTime,
+					ToTime:   toTime,
+					FromDate: startDate.Format("2006-01-02"),
+					ToDate:   endDate.Format("2006-01-02"),
+					Days:     &dt,
+				}
+
+				s.logger.Info("Querying HSP API",
+					zap.String("from", query.OriginCRS),
+					zap.String("to", query.DestinationCRS),
+					zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+					zap.String("days", dt),
+				)
+
+				hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+				results <- result{resp: hspResp, dayType: dt, err: err}
+			}(dayType)
+		}
+
+		// Collect all results
+		for i := 0; i < 3; i++ {
+			res := <-results
+			if res.err != nil {
+				return nil, fmt.Errorf("HSP API error for %s: %w", res.dayType, res.err)
 			}
-			allResponses = append(allResponses, hspResp)
+			allResponses = append(allResponses, res.resp)
 		}
 	} else {
 		// Single query for specific day filter
