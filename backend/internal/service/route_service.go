@@ -195,8 +195,10 @@ func splitDateRange(start, end time.Time, maxDays int) []dateChunk {
 	var chunks []dateChunk
 	current := start
 
-	for current.Before(end) {
-		chunkEnd := current.AddDate(0, 0, maxDays)
+	for current.Before(end) || current.Equal(end) {
+		// For 1-day chunks, chunkEnd should be same as start
+		// For N-day chunks, chunkEnd should be N-1 days after start
+		chunkEnd := current.AddDate(0, 0, maxDays-1)
 		if chunkEnd.After(end) {
 			chunkEnd = end
 		}
