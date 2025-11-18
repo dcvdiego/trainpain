@@ -90,12 +90,16 @@ func (s *RouteService) fetchAndComputeMetrics(
 	// Convert day filter to HSP format
 	days := convertDayFilter(query.DayFilter)
 
+	// Convert times to HSP format (HHMM without colon)
+	fromTime := convertTimeFormat(query.TimeStart)
+	toTime := convertTimeFormat(query.TimeEnd)
+
 	// Query HSP API
 	hspReq := external.HSPServiceMetricsRequest{
 		FromLoc:  query.OriginCRS,
 		ToLoc:    query.DestinationCRS,
-		FromTime: query.TimeStart,
-		ToTime:   query.TimeEnd,
+		FromTime: fromTime,
+		ToTime:   toTime,
 		FromDate: startDate.Format("2006-01-02"),
 		ToDate:   endDate.Format("2006-01-02"),
 		Days:     days,
@@ -127,6 +131,15 @@ func convertDayFilter(filter string) string {
 	default:
 		return "" // All days
 	}
+}
+
+// convertTimeFormat converts time from "HH:MM" to "HHMM" format for HSP API
+func convertTimeFormat(timeStr string) string {
+	if timeStr == "" {
+		return ""
+	}
+	// Remove colon from time (e.g., "07:00" -> "0700")
+	return timeStr[0:2] + timeStr[3:5]
 }
 
 func computeMetricsFromHSP(
