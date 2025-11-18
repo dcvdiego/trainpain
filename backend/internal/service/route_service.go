@@ -57,11 +57,13 @@ func (s *RouteService) GetReliability(ctx context.Context, query domain.RouteRel
 	if query.DayFilter == "" {
 		query.DayFilter = "all"
 	}
+	// Default to morning peak hours to avoid overwhelming the HSP API
+	// Querying all 24 hours causes 502 errors on busy routes
 	if query.TimeStart == "" {
-		query.TimeStart = "00:00"
+		query.TimeStart = "07:00"
 	}
 	if query.TimeEnd == "" {
-		query.TimeEnd = "23:59"
+		query.TimeEnd = "09:00"
 	}
 
 	// Fetch data from HSP API
