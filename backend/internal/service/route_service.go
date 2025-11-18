@@ -91,84 +91,119 @@ func (s *RouteService) fetchAndComputeMetrics(
 	fromTime := convertTimeFormat(query.TimeStart)
 	toTime := convertTimeFormat(query.TimeEnd)
 
-	// HSP API requires days field with specific values: WEEKDAY, SATURDAY, or SUNDAY
-	// For "all" days, we need to query all three and aggregate
+	// Split large date ranges into 90-day chunks to avoid HSP API timeouts
+	const maxDaysPerQuery = 90
 	var allResponses []*external.HSPServiceMetricsResponse
 
-	if query.DayFilter == "all" {
-		// Query all three day types in parallel for better performance
-		type result struct {
-			resp    *external.HSPServiceMetricsResponse
-			dayType string
-			err     error
-		}
+	// Calculate date chunks
+	dateChunks := splitDateRange(startDate, endDate, maxDaysPerQuery)
 
-		results := make(chan result, 3)
+	s.logger.Info("Querying HSP API",
+		zap.String("from", query.OriginCRS),
+		zap.String("to", query.DestinationCRS),
+		zap.Int("total_days", query.AnalysisDays),
+		zap.Int("chunks", len(dateChunks)),
+	)
+
+	// HSP API requires days field with specific values: WEEKDAY, SATURDAY, or SUNDAY
+	// For "all" days, we need to query all three and aggregate
+	if query.DayFilter == "all" {
+		// Query all three day types in parallel for each date chunk
 		dayTypes := []string{"WEEKDAY", "SATURDAY", "SUNDAY"}
 
-		for _, dayType := range dayTypes {
-			go func(dt string) {
-				hspReq := external.HSPServiceMetricsRequest{
-					FromLoc:  query.OriginCRS,
-					ToLoc:    query.DestinationCRS,
-					FromTime: fromTime,
-					ToTime:   toTime,
-					FromDate: startDate.Format("2006-01-02"),
-					ToDate:   endDate.Format("2006-01-02"),
-					Days:     &dt,
-				}
-
-				s.logger.Info("Querying HSP API",
-					zap.String("from", query.OriginCRS),
-					zap.String("to", query.DestinationCRS),
-					zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
-					zap.String("days", dt),
-				)
-
-				hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
-				results <- result{resp: hspResp, dayType: dt, err: err}
-			}(dayType)
-		}
-
-		// Collect all results
-		for i := 0; i < 3; i++ {
-			res := <-results
-			if res.err != nil {
-				return nil, fmt.Errorf("HSP API error for %s: %w", res.dayType, res.err)
+		for _, chunk := range dateChunks {
+			type result struct {
+				resp    *external.HSPServiceMetricsResponse
+				dayType string
+				err     error
 			}
-			allResponses = append(allResponses, res.resp)
+
+			results := make(chan result, 3)
+
+			for _, dayType := range dayTypes {
+				go func(dt string, chunkStart, chunkEnd time.Time) {
+					hspReq := external.HSPServiceMetricsRequest{
+						FromLoc:  query.OriginCRS,
+						ToLoc:    query.DestinationCRS,
+						FromTime: fromTime,
+						ToTime:   toTime,
+						FromDate: chunkStart.Format("2006-01-02"),
+						ToDate:   chunkEnd.Format("2006-01-02"),
+						Days:     &dt,
+					}
+
+					s.logger.Debug("Querying HSP API chunk",
+						zap.String("days", dt),
+						zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+					)
+
+					hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+					results <- result{resp: hspResp, dayType: dt, err: err}
+				}(dayType, chunk.start, chunk.end)
+			}
+
+			// Collect results for this chunk
+			for i := 0; i < 3; i++ {
+				res := <-results
+				if res.err != nil {
+					return nil, fmt.Errorf("HSP API error for %s: %w", res.dayType, res.err)
+				}
+				allResponses = append(allResponses, res.resp)
+			}
 		}
 	} else {
-		// Single query for specific day filter
+		// Single day type, but still chunk by date
 		days := convertDayFilter(query.DayFilter)
-		hspReq := external.HSPServiceMetricsRequest{
-			FromLoc:  query.OriginCRS,
-			ToLoc:    query.DestinationCRS,
-			FromTime: fromTime,
-			ToTime:   toTime,
-			FromDate: startDate.Format("2006-01-02"),
-			ToDate:   endDate.Format("2006-01-02"),
-			Days:     days,
-		}
 
-		s.logger.Info("Querying HSP API",
-			zap.String("from", query.OriginCRS),
-			zap.String("to", query.DestinationCRS),
-			zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
-			zap.String("days", *days),
-		)
+		for _, chunk := range dateChunks {
+			hspReq := external.HSPServiceMetricsRequest{
+				FromLoc:  query.OriginCRS,
+				ToLoc:    query.DestinationCRS,
+				FromTime: fromTime,
+				ToTime:   toTime,
+				FromDate: chunk.start.Format("2006-01-02"),
+				ToDate:   chunk.end.Format("2006-01-02"),
+				Days:     days,
+			}
 
-		hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
-		if err != nil {
-			return nil, fmt.Errorf("HSP API error: %w", err)
+			s.logger.Debug("Querying HSP API chunk",
+				zap.String("days", *days),
+				zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+			)
+
+			hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+			if err != nil {
+				return nil, fmt.Errorf("HSP API error: %w", err)
+			}
+			allResponses = append(allResponses, hspResp)
 		}
-		allResponses = append(allResponses, hspResp)
 	}
 
 	// Aggregate and compute metrics from HSP responses
 	metrics := computeMetricsFromHSP(allResponses, routeID, query, startDate, endDate)
 
 	return metrics, nil
+}
+
+type dateChunk struct {
+	start time.Time
+	end   time.Time
+}
+
+func splitDateRange(start, end time.Time, maxDays int) []dateChunk {
+	var chunks []dateChunk
+	current := start
+
+	for current.Before(end) {
+		chunkEnd := current.AddDate(0, 0, maxDays)
+		if chunkEnd.After(end) {
+			chunkEnd = end
+		}
+		chunks = append(chunks, dateChunk{start: current, end: chunkEnd})
+		current = chunkEnd.AddDate(0, 0, 1) // Move to next day after chunk
+	}
+
+	return chunks
 }
 
 func convertDayFilter(filter string) *string {
