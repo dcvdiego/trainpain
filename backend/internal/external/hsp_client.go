@@ -26,7 +26,7 @@ func NewHSPClient(baseURL, username, password string) *HSPClient {
 		baseURL:  baseURL,
 		username: username,
 		password: password,
-		client:   resty.New().SetTimeout(30 * time.Second),
+		client:   resty.New().SetTimeout(90 * time.Second), // Increased for large date ranges
 		limiter:  limiter,
 	}
 }
