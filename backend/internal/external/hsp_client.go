@@ -2,7 +2,6 @@ package external
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -115,10 +114,6 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 		body["days"] = *req.Days
 	}
 
-	// Debug: Log the JSON being sent
-	jsonBytes, _ := json.Marshal(body)
-	fmt.Printf("DEBUG: HSP API Request JSON: %s\n", string(jsonBytes))
-
 	var result HSPServiceMetricsResponse
 	resp, err := c.client.R().
 		SetContext(ctx).
@@ -126,7 +121,6 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 		SetBasicAuth(c.username, c.password).
 		SetBody(body).
 		SetResult(&result).
-		SetDebug(true). // Enable resty debug mode to see full request/response
 		Post(c.baseURL + "/api/v1/serviceMetrics")
 
 	if err != nil {
