@@ -91,8 +91,8 @@ func (s *RouteService) fetchAndComputeMetrics(
 	fromTime := convertTimeFormat(query.TimeStart)
 	toTime := convertTimeFormat(query.TimeEnd)
 
-	// Split large date ranges into 90-day chunks to avoid HSP API timeouts
-	const maxDaysPerQuery = 90
+	// Split large date ranges into 30-day chunks to avoid HSP API timeouts
+	const maxDaysPerQuery = 30
 	var allResponses []*external.HSPServiceMetricsResponse
 
 	// Calculate date chunks
