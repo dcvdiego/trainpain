@@ -100,8 +100,23 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 		return nil, fmt.Errorf("rate limiter error: %w", err)
 	}
 
+	// Build request body as a map to have full control over which fields are included
+	body := map[string]interface{}{
+		"from_loc":  req.FromLoc,
+		"to_loc":    req.ToLoc,
+		"from_time": req.FromTime,
+		"to_time":   req.ToTime,
+		"from_date": req.FromDate,
+		"to_date":   req.ToDate,
+	}
+
+	// Only include days if it's not nil
+	if req.Days != nil {
+		body["days"] = *req.Days
+	}
+
 	// Debug: Log the JSON being sent
-	jsonBytes, _ := json.Marshal(req)
+	jsonBytes, _ := json.Marshal(body)
 	fmt.Printf("DEBUG: HSP API Request JSON: %s\n", string(jsonBytes))
 
 	var result HSPServiceMetricsResponse
@@ -109,7 +124,7 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetBasicAuth(c.username, c.password).
-		SetBody(req).
+		SetBody(body).
 		SetResult(&result).
 		Post(c.baseURL + "/api/v1/serviceMetrics")
 
