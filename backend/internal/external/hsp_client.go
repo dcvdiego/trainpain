@@ -2,6 +2,7 @@ package external
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -98,6 +99,10 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter error: %w", err)
 	}
+
+	// Debug: Log the JSON being sent
+	jsonBytes, _ := json.Marshal(req)
+	fmt.Printf("DEBUG: HSP API Request JSON: %s\n", string(jsonBytes))
 
 	var result HSPServiceMetricsResponse
 	resp, err := c.client.R().

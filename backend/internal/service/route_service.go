@@ -105,10 +105,16 @@ func (s *RouteService) fetchAndComputeMetrics(
 		Days:     days,
 	}
 
+	// Log the request including days field for debugging
+	daysValue := "nil (all days)"
+	if hspReq.Days != nil {
+		daysValue = *hspReq.Days
+	}
 	s.logger.Info("Querying HSP API",
 		zap.String("from", query.OriginCRS),
 		zap.String("to", query.DestinationCRS),
 		zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+		zap.String("days", daysValue),
 	)
 
 	hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
