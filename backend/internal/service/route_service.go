@@ -122,14 +122,16 @@ func (s *RouteService) fetchAndComputeMetrics(
 	return metrics, nil
 }
 
-func convertDayFilter(filter string) string {
+func convertDayFilter(filter string) *string {
 	switch filter {
 	case "weekday":
-		return "WEEKDAY"
+		s := "WEEKDAY"
+		return &s
 	case "weekend":
-		return "WEEKEND"
+		s := "WEEKEND"
+		return &s
 	default:
-		return "" // All days
+		return nil // All days - field will be omitted from JSON
 	}
 }
 

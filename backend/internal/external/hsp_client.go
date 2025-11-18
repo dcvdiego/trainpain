@@ -32,13 +32,13 @@ func NewHSPClient(baseURL, username, password string) *HSPClient {
 }
 
 type HSPServiceMetricsRequest struct {
-	FromLoc  string `json:"from_loc"`
-	ToLoc    string `json:"to_loc"`
-	FromTime string `json:"from_time"`
-	ToTime   string `json:"to_time"`
-	FromDate string `json:"from_date"`
-	ToDate   string `json:"to_date"`
-	Days     string `json:"days,omitempty"` // WEEKDAY, WEEKEND, or empty for all
+	FromLoc  string  `json:"from_loc"`
+	ToLoc    string  `json:"to_loc"`
+	FromTime string  `json:"from_time"`
+	ToTime   string  `json:"to_time"`
+	FromDate string  `json:"from_date"`
+	ToDate   string  `json:"to_date"`
+	Days     *string `json:"days,omitempty"` // WEEKDAY, WEEKEND, or nil for all
 }
 
 type HSPServiceMetricsResponse struct {

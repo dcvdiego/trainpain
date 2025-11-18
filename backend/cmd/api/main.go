@@ -20,10 +20,14 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
 func main() {
+	// Load .env file if it exists (for local development)
+	_ = godotenv.Load() // Ignore error if .env doesn't exist
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
