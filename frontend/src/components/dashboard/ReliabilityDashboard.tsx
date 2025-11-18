@@ -5,7 +5,7 @@ import {
   ClockCircleOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { RouteReliabilityResponse } from '../../types/route';
+import type { RouteReliabilityResponse } from '../../types';
 import { getReliabilityLevel, formatPercentage, formatDelay, formatDayFilter } from '../../utils/reliability';
 
 const { Title, Text } = Typography;

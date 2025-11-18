@@ -3,7 +3,7 @@ import { Layout, Typography, Card, Alert, Spin } from 'antd';
 import { RouteSearchForm } from '../components/search/RouteSearchForm';
 import { ReliabilityDashboard } from '../components/dashboard/ReliabilityDashboard';
 import { routeService } from '../services/routeService';
-import { RouteReliabilityQuery, RouteReliabilityResponse } from '../types/route';
+import type { RouteReliabilityQuery, RouteReliabilityResponse } from '../types';
 
 const { Header, Content, Footer } = Layout;
 const { Title, Text, Paragraph } = Typography;

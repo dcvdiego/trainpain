@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import { StationSearchResult } from '../types/station';
+import type { StationSearchResult } from '../types';
 
 export const stationService = {
   async search(query: string): Promise<StationSearchResult[]> {

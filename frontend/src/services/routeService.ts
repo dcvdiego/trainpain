@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import { RouteReliabilityQuery, RouteReliabilityResponse } from '../types/route';
+import type { RouteReliabilityQuery, RouteReliabilityResponse } from '../types';
 
 export const routeService = {
   async getReliability(query: RouteReliabilityQuery): Promise<RouteReliabilityResponse> {

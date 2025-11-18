@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Form, Select, Button, Row, Col, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { stationService } from '../../services/stationService';
-import { StationSearchResult } from '../../types/station';
-import { RouteReliabilityQuery } from '../../types/route';
+import type { StationSearchResult, RouteReliabilityQuery } from '../../types';
 
 const { Option } = Select;
 
