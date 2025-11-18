@@ -17,8 +17,8 @@ type Station struct {
 }
 
 type StationSearchResult struct {
-	ID          int     `json:"id"`
-	CRSCode     *string `json:"crs_code,omitempty"`
-	StationName string  `json:"station_name"`
-	StationType *string `json:"station_type,omitempty"`
+	ID          int     `db:"id" json:"id"`
+	CRSCode     *string `db:"crs_code" json:"crs_code,omitempty"`
+	StationName string  `db:"station_name" json:"station_name"`
+	StationType *string `db:"station_type" json:"station_type,omitempty"`
 }
