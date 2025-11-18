@@ -126,6 +126,7 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 		SetBasicAuth(c.username, c.password).
 		SetBody(body).
 		SetResult(&result).
+		SetDebug(true). // Enable resty debug mode to see full request/response
 		Post(c.baseURL + "/api/v1/serviceMetrics")
 
 	if err != nil {
