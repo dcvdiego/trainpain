@@ -1,0 +1,21 @@
+server:
+  port: "8080"
+  host: "0.0.0.0"
+  env: "development"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "trainpain_user"
+  password: "trainpain_dev_password"
+  dbname: "trainpain"
+  sslmode: "disable"
+
+hsp:
+  username: "your_username_here"
+  password: "your_password_here"
+  base_url: "https://hsp-prod.rockshore.net"
+
+tfl:
+  app_id: "your_app_id_here"
+  app_key: "your_app_key_here"
