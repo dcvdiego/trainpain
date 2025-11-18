@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"crypto/md5"
+	"database/sql"
 	"fmt"
 
 	"github.com/dcvdiego/trainpain-backend/internal/domain"
@@ -31,27 +32,35 @@ func (r *RouteRepository) GetOrCreate(ctx context.Context, originID, destination
 		return &route, nil
 	}
 
-	// Create new route if not found
+	// If error is not "no rows found", return the error
+	if err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to query route: %w", err)
+	}
+
+	// Create new route if not found - use ON CONFLICT to handle race conditions
 	routeHash := generateRouteHash(originID, destinationID)
 
 	insertQuery := `
 		INSERT INTO routes (origin_station_id, destination_station_id, route_hash, operators, is_tfl_route)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, created_at
+		ON CONFLICT (origin_station_id, destination_station_id)
+		DO UPDATE SET origin_station_id = EXCLUDED.origin_station_id
+		RETURNING id, origin_station_id, destination_station_id, route_hash, operators, is_tfl_route, created_at
 	`
 
 	err = r.db.QueryRowContext(ctx, insertQuery,
 		originID, destinationID, routeHash, []string{}, false,
-	).Scan(&route.ID, &route.CreatedAt)
+	).Scan(&route.ID, &route.OriginStationID, &route.DestinationStationID,
+		&route.RouteHash, &route.Operators, &route.IsTfLRoute, &route.CreatedAt)
 
 	if err != nil {
+		// If still fails, try one more SELECT (race condition edge case)
+		selectErr := r.db.GetContext(ctx, &route, query, originID, destinationID)
+		if selectErr == nil {
+			return &route, nil
+		}
 		return nil, fmt.Errorf("failed to create route: %w", err)
 	}
-
-	route.OriginStationID = originID
-	route.DestinationStationID = destinationID
-	route.RouteHash = routeHash
-	route.IsTfLRoute = false
 
 	return &route, nil
 }
