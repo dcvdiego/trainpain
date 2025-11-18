@@ -1,17 +1,72 @@
 package domain
 
-import "time"
+import (
+	"database/sql/driver"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// StringArray is a custom type for PostgreSQL TEXT[] arrays
+type StringArray []string
+
+// Scan implements sql.Scanner for StringArray
+func (a *StringArray) Scan(src interface{}) error {
+	if src == nil {
+		*a = []string{}
+		return nil
+	}
+
+	switch v := src.(type) {
+	case []byte:
+		return a.scanBytes(v)
+	case string:
+		return a.scanBytes([]byte(v))
+	default:
+		return fmt.Errorf("cannot scan type %T into StringArray", src)
+	}
+}
+
+func (a *StringArray) scanBytes(src []byte) error {
+	str := string(src)
+	// PostgreSQL array format: {val1,val2,val3}
+	if str == "{}" || str == "" {
+		*a = []string{}
+		return nil
+	}
+
+	// Remove curly braces
+	str = strings.TrimPrefix(str, "{")
+	str = strings.TrimSuffix(str, "}")
+
+	if str == "" {
+		*a = []string{}
+		return nil
+	}
+
+	// Split by comma
+	*a = strings.Split(str, ",")
+	return nil
+}
+
+// Value implements driver.Valuer for StringArray
+func (a StringArray) Value() (driver.Value, error) {
+	if len(a) == 0 {
+		return "{}", nil
+	}
+	return "{" + strings.Join(a, ",") + "}", nil
+}
 
 type Route struct {
-	ID                    int       `db:"id" json:"id"`
-	OriginStationID       int       `db:"origin_station_id" json:"origin_station_id"`
-	DestinationStationID  int       `db:"destination_station_id" json:"destination_station_id"`
-	RouteHash             string    `db:"route_hash" json:"route_hash"`
-	Operators             []string  `db:"operators" json:"operators"`
-	TypicalDurationMinutes *int     `db:"typical_duration_minutes" json:"typical_duration_minutes,omitempty"`
-	DistanceMiles         *float64  `db:"distance_miles" json:"distance_miles,omitempty"`
-	IsTfLRoute            bool      `db:"is_tfl_route" json:"is_tfl_route"`
-	CreatedAt             time.Time `db:"created_at" json:"created_at"`
+	ID                    int         `db:"id" json:"id"`
+	OriginStationID       int         `db:"origin_station_id" json:"origin_station_id"`
+	DestinationStationID  int         `db:"destination_station_id" json:"destination_station_id"`
+	RouteHash             string      `db:"route_hash" json:"route_hash"`
+	Operators             StringArray `db:"operators" json:"operators"`
+	TypicalDurationMinutes *int       `db:"typical_duration_minutes" json:"typical_duration_minutes,omitempty"`
+	DistanceMiles         *float64    `db:"distance_miles" json:"distance_miles,omitempty"`
+	IsTfLRoute            bool        `db:"is_tfl_route" json:"is_tfl_route"`
+	CreatedAt             time.Time   `db:"created_at" json:"created_at"`
 }
 
 type ServiceRecord struct {

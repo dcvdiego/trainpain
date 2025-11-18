@@ -49,7 +49,7 @@ func (r *RouteRepository) GetOrCreate(ctx context.Context, originID, destination
 	`
 
 	err = r.db.QueryRowContext(ctx, insertQuery,
-		originID, destinationID, routeHash, []string{}, false,
+		originID, destinationID, routeHash, domain.StringArray{}, false,
 	).Scan(&route.ID, &route.OriginStationID, &route.DestinationStationID,
 		&route.RouteHash, &route.Operators, &route.IsTfLRoute, &route.CreatedAt)
 
