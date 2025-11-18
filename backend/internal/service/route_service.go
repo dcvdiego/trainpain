@@ -87,43 +87,69 @@ func (s *RouteService) fetchAndComputeMetrics(
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -query.AnalysisDays)
 
-	// Convert day filter to HSP format
-	days := convertDayFilter(query.DayFilter)
-
 	// Convert times to HSP format (HHMM without colon)
 	fromTime := convertTimeFormat(query.TimeStart)
 	toTime := convertTimeFormat(query.TimeEnd)
 
-	// Query HSP API
-	hspReq := external.HSPServiceMetricsRequest{
-		FromLoc:  query.OriginCRS,
-		ToLoc:    query.DestinationCRS,
-		FromTime: fromTime,
-		ToTime:   toTime,
-		FromDate: startDate.Format("2006-01-02"),
-		ToDate:   endDate.Format("2006-01-02"),
-		Days:     days,
+	// HSP API requires days field with specific values: WEEKDAY, SATURDAY, or SUNDAY
+	// For "all" days, we need to query all three and aggregate
+	var allResponses []*external.HSPServiceMetricsResponse
+
+	if query.DayFilter == "all" {
+		// Query all three day types
+		for _, dayType := range []string{"WEEKDAY", "SATURDAY", "SUNDAY"} {
+			hspReq := external.HSPServiceMetricsRequest{
+				FromLoc:  query.OriginCRS,
+				ToLoc:    query.DestinationCRS,
+				FromTime: fromTime,
+				ToTime:   toTime,
+				FromDate: startDate.Format("2006-01-02"),
+				ToDate:   endDate.Format("2006-01-02"),
+				Days:     &dayType,
+			}
+
+			s.logger.Info("Querying HSP API",
+				zap.String("from", query.OriginCRS),
+				zap.String("to", query.DestinationCRS),
+				zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+				zap.String("days", dayType),
+			)
+
+			hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+			if err != nil {
+				return nil, fmt.Errorf("HSP API error for %s: %w", dayType, err)
+			}
+			allResponses = append(allResponses, hspResp)
+		}
+	} else {
+		// Single query for specific day filter
+		days := convertDayFilter(query.DayFilter)
+		hspReq := external.HSPServiceMetricsRequest{
+			FromLoc:  query.OriginCRS,
+			ToLoc:    query.DestinationCRS,
+			FromTime: fromTime,
+			ToTime:   toTime,
+			FromDate: startDate.Format("2006-01-02"),
+			ToDate:   endDate.Format("2006-01-02"),
+			Days:     days,
+		}
+
+		s.logger.Info("Querying HSP API",
+			zap.String("from", query.OriginCRS),
+			zap.String("to", query.DestinationCRS),
+			zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+			zap.String("days", *days),
+		)
+
+		hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+		if err != nil {
+			return nil, fmt.Errorf("HSP API error: %w", err)
+		}
+		allResponses = append(allResponses, hspResp)
 	}
 
-	// Log the request including days field for debugging
-	daysValue := "nil (all days)"
-	if hspReq.Days != nil {
-		daysValue = *hspReq.Days
-	}
-	s.logger.Info("Querying HSP API",
-		zap.String("from", query.OriginCRS),
-		zap.String("to", query.DestinationCRS),
-		zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
-		zap.String("days", daysValue),
-	)
-
-	hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
-	if err != nil {
-		return nil, fmt.Errorf("HSP API error: %w", err)
-	}
-
-	// Compute metrics from HSP response
-	metrics := computeMetricsFromHSP(hspResp, routeID, query, startDate, endDate)
+	// Aggregate and compute metrics from HSP responses
+	metrics := computeMetricsFromHSP(allResponses, routeID, query, startDate, endDate)
 
 	return metrics, nil
 }
@@ -133,11 +159,16 @@ func convertDayFilter(filter string) *string {
 	case "weekday":
 		s := "WEEKDAY"
 		return &s
-	case "weekend":
-		s := "WEEKEND"
+	case "saturday":
+		s := "SATURDAY"
+		return &s
+	case "sunday":
+		s := "SUNDAY"
 		return &s
 	default:
-		return nil // All days - field will be omitted from JSON
+		// Default to WEEKDAY if not specified
+		s := "WEEKDAY"
+		return &s
 	}
 }
 
@@ -151,12 +182,18 @@ func convertTimeFormat(timeStr string) string {
 }
 
 func computeMetricsFromHSP(
-	hspResp *external.HSPServiceMetricsResponse,
+	hspResponses []*external.HSPServiceMetricsResponse,
 	routeID int,
 	query domain.RouteReliabilityQuery,
 	startDate, endDate time.Time,
 ) *domain.RouteReliabilityMetrics {
-	if len(hspResp.Services) == 0 {
+	// Aggregate all services from multiple responses
+	var allServices []external.HSPService
+	for _, hspResp := range hspResponses {
+		allServices = append(allServices, hspResp.Services...)
+	}
+
+	if len(allServices) == 0 {
 		// No data available
 		return &domain.RouteReliabilityMetrics{
 			RouteID:               routeID,
@@ -172,34 +209,40 @@ func computeMetricsFromHSP(
 		}
 	}
 
-	// Extract metrics from HSP response
+	// Extract and aggregate metrics from all HSP services
 	// HSP provides metrics with different tolerance values (e.g., 0, 5, 10, 15 minutes)
-	service := hspResp.Services[0]
-
 	var (
-		onTimeRate       float64
-		pct0To5Min       float64
-		pct5To15Min      float64
-		pct15To30Min     float64
-		totalServices    int
-		cancellationRate float64
+		totalTolerance5    int
+		totalNotTolerance5 int
+		totalTolerance15   int
+		totalTolerance30   int
 	)
 
-	// Find the 5-minute tolerance metric for "on-time" calculation
-	for _, metric := range service.Metrics {
-		if metric.ToleranceValue == 5 && metric.GlobalTolerance {
-			totalServices = metric.NumTolerance + metric.NumNotTolerance
-			onTimeRate = metric.Percent
-			pct0To5Min = metric.Percent
+	// Aggregate metrics from all services
+	for _, service := range allServices {
+		for _, metric := range service.Metrics {
+			if metric.ToleranceValue == 5 && metric.GlobalTolerance {
+				totalTolerance5 += metric.NumTolerance
+				totalNotTolerance5 += metric.NumNotTolerance
+			}
+			if metric.ToleranceValue == 15 && metric.GlobalTolerance {
+				totalTolerance15 += metric.NumTolerance
+			}
+			if metric.ToleranceValue == 30 && metric.GlobalTolerance {
+				totalTolerance30 += metric.NumTolerance
+			}
 		}
-		if metric.ToleranceValue == 15 && metric.GlobalTolerance {
-			// Services delayed 5-15 minutes
-			pct5To15Min = metric.Percent - pct0To5Min
-		}
-		if metric.ToleranceValue == 30 && metric.GlobalTolerance {
-			// Services delayed 15-30 minutes
-			pct15To30Min = metric.Percent - (pct0To5Min + pct5To15Min)
-		}
+	}
+
+	// Calculate percentages from aggregated totals
+	totalServices := totalTolerance5 + totalNotTolerance5
+	var onTimeRate, pct0To5Min, pct5To15Min, pct15To30Min float64
+
+	if totalServices > 0 {
+		onTimeRate = float64(totalTolerance5) / float64(totalServices) * 100
+		pct0To5Min = onTimeRate
+		pct5To15Min = (float64(totalTolerance15-totalTolerance5) / float64(totalServices)) * 100
+		pct15To30Min = (float64(totalTolerance30-totalTolerance15) / float64(totalServices)) * 100
 	}
 
 	// Services delayed 30+ minutes
@@ -207,7 +250,7 @@ func computeMetricsFromHSP(
 
 	// Estimate cancellation rate (simplified - in reality we'd need service details)
 	// For MVP, assume 0 if we don't have this data
-	cancellationRate = 0.0
+	cancellationRate := 0.0
 
 	// Calculate average delay (rough estimation from distribution)
 	avgDelay := (pct0To5Min * 2.5) + (pct5To15Min * 10) + (pct15To30Min * 22.5) + (pct30Plus * 45)
