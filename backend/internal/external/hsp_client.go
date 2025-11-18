@@ -60,7 +60,7 @@ type HSPServiceAttributesMetrics struct {
 }
 
 type HSPMetric struct {
-	ToleranceValue  int     `json:"tolerance_value"`
+	ToleranceValue  string  `json:"tolerance_value"` // API returns this as string, not int
 	NumNotTolerance int     `json:"num_not_tolerance"`
 	NumTolerance    int     `json:"num_tolerance"`
 	Percent         float64 `json:"percent"`

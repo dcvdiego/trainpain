@@ -278,14 +278,14 @@ func computeMetricsFromHSP(
 	// Aggregate metrics from all services
 	for _, service := range allServices {
 		for _, metric := range service.Metrics {
-			if metric.ToleranceValue == 5 && metric.GlobalTolerance {
+			if metric.ToleranceValue == "5" && metric.GlobalTolerance {
 				totalTolerance5 += metric.NumTolerance
 				totalNotTolerance5 += metric.NumNotTolerance
 			}
-			if metric.ToleranceValue == 15 && metric.GlobalTolerance {
+			if metric.ToleranceValue == "15" && metric.GlobalTolerance {
 				totalTolerance15 += metric.NumTolerance
 			}
-			if metric.ToleranceValue == 30 && metric.GlobalTolerance {
+			if metric.ToleranceValue == "30" && metric.GlobalTolerance {
 				totalTolerance30 += metric.NumTolerance
 			}
 		}
