@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Form, Select, Button, Row, Col, message } from 'antd';
+import { Form, Select, Button, Row, Col, message, TimePicker } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { stationService } from '../../services/stationService';
 import type { StationSearchResult, RouteReliabilityQuery } from '../../types';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 
@@ -56,8 +57,8 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
     const query: RouteReliabilityQuery = {
       origin_crs: values.origin,
       destination_crs: values.destination,
-      time_start: values.time_window?.[0] || undefined,
-      time_end: values.time_window?.[1] || undefined,
+      time_start: values.time_range?.[0]?.format('HH:mm') || undefined,
+      time_end: values.time_range?.[1]?.format('HH:mm') || undefined,
       day_filter: values.day_filter || 'all',
       analysis_days: values.analysis_days || 90,
     };
@@ -72,7 +73,8 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
       onFinish={handleSubmit}
       initialValues={{
         day_filter: 'weekday',
-        analysis_days: 90,
+        analysis_days: 30,
+        time_range: [dayjs('07:00', 'HH:mm'), dayjs('09:00', 'HH:mm')],
       }}
     >
       <Row gutter={[16, 16]}>
@@ -141,19 +143,28 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
           </Form.Item>
         </Col>
 
-        <Col xs={24} md={8}>
+        <Col xs={24} md={6}>
+          <Form.Item label="Time Window" name="time_range">
+            <TimePicker.RangePicker
+              format="HH:mm"
+              size="large"
+              minuteStep={15}
+            />
+          </Form.Item>
+        </Col>
+
+        <Col xs={24} md={6}>
           <Form.Item label="Analysis Period" name="analysis_days">
             <Select size="large">
+              <Option value={7}>Last 7 days</Option>
               <Option value={30}>Last 30 days</Option>
               <Option value={60}>Last 60 days</Option>
               <Option value={90}>Last 90 days</Option>
-              <Option value={180}>Last 6 months</Option>
-              <Option value={365}>Last year</Option>
             </Select>
           </Form.Item>
         </Col>
 
-        <Col xs={24} md={8}>
+        <Col xs={24} md={4}>
           <Form.Item label=" ">
             <Button
               type="primary"
@@ -163,7 +174,7 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
               loading={loading}
               block
             >
-              Check Reliability
+              Search
             </Button>
           </Form.Item>
         </Col>
