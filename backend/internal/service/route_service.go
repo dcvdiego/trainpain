@@ -290,6 +290,8 @@ func computeMetricsFromHSP(
 	// Extract and aggregate metrics from all HSP services
 	// HSP provides metrics with different tolerance values (e.g., 0, 5, 10, 15 minutes)
 	var (
+		totalTolerance0    int
+		totalNotTolerance0 int
 		totalTolerance5    int
 		totalNotTolerance5 int
 		totalTolerance15   int
@@ -319,6 +321,17 @@ func computeMetricsFromHSP(
 		}
 
 		for _, metric := range service.Metrics {
+			if metric.ToleranceValue == "0" && metric.GlobalTolerance {
+				// tolerance_value=0 means perfectly on time (0 delay)
+				// num_tolerance = trains within 0 min (perfectly on time)
+				// num_not_tolerance = trains with ANY delay
+				if numTol, err := strconv.Atoi(metric.NumTolerance); err == nil {
+					totalTolerance0 += numTol
+				}
+				if numNotTol, err := strconv.Atoi(metric.NumNotTolerance); err == nil {
+					totalNotTolerance0 += numNotTol
+				}
+			}
 			if metric.ToleranceValue == "5" && metric.GlobalTolerance {
 				// Parse string values to integers
 				if numTol, err := strconv.Atoi(metric.NumTolerance); err == nil {
@@ -341,18 +354,31 @@ func computeMetricsFromHSP(
 		}
 	}
 
-	fmt.Printf("After aggregating: totalTolerance5=%d, totalNotTolerance5=%d, totalTolerance15=%d, totalTolerance30=%d\n",
-		totalTolerance5, totalNotTolerance5, totalTolerance15, totalTolerance30)
+	fmt.Printf("After aggregating: totalTolerance0=%d, totalNotTolerance0=%d, totalTolerance5=%d, totalNotTolerance5=%d, totalTolerance15=%d, totalTolerance30=%d\n",
+		totalTolerance0, totalNotTolerance0, totalTolerance5, totalNotTolerance5, totalTolerance15, totalTolerance30)
 
 	// Calculate percentages from aggregated totals
-	totalServices := totalTolerance5 + totalNotTolerance5
+	// Try to use tolerance=5 data first, fall back to tolerance=0 if not available
+	var totalServices int
 	var onTimeRate, pct0To5Min, pct5To15Min, pct15To30Min float64
 
-	if totalServices > 0 {
+	if totalTolerance5+totalNotTolerance5 > 0 {
+		// We have tolerance=5 data (trains within 5 min considered on time)
+		totalServices = totalTolerance5 + totalNotTolerance5
 		onTimeRate = float64(totalTolerance5) / float64(totalServices) * 100
 		pct0To5Min = onTimeRate
 		pct5To15Min = (float64(totalTolerance15-totalTolerance5) / float64(totalServices)) * 100
 		pct15To30Min = (float64(totalTolerance30-totalTolerance15) / float64(totalServices)) * 100
+	} else if totalTolerance0+totalNotTolerance0 > 0 {
+		// We only have tolerance=0 data (only perfectly on time trains)
+		// Use this as a strict on-time metric
+		totalServices = totalTolerance0 + totalNotTolerance0
+		onTimeRate = float64(totalTolerance0) / float64(totalServices) * 100
+		// For tolerance=0, we don't have delay distribution data
+		// Assume all delayed trains are in the 0-5 min category for now
+		pct0To5Min = onTimeRate
+		pct5To15Min = 0
+		pct15To30Min = 0
 	}
 
 	// Services delayed 30+ minutes
