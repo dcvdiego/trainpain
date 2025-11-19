@@ -131,14 +131,14 @@ func (s *RouteService) fetchAndComputeMetrics(
 			for _, dayType := range dayTypes {
 				go func(dt string, chunkStart, chunkEnd time.Time) {
 					hspReq := external.HSPServiceMetricsRequest{
-						FromLoc:   query.OriginCRS,
-						ToLoc:     query.DestinationCRS,
-						FromTime:  fromTime,
-						ToTime:    toTime,
-						FromDate:  chunkStart.Format("2006-01-02"),
-						ToDate:    chunkEnd.Format("2006-01-02"),
-						Days:      &dt,
-						Tolerance: []string{"5", "10", "15"}, // Request 5, 10, 15 minute tolerances
+						FromLoc:  query.OriginCRS,
+						ToLoc:    query.DestinationCRS,
+						FromTime: fromTime,
+						ToTime:   toTime,
+						FromDate: chunkStart.Format("2006-01-02"),
+						ToDate:   chunkEnd.Format("2006-01-02"),
+						Days:     &dt,
+						// Note: tolerance parameter causes 30+ second timeouts, removed
 					}
 
 					s.logger.Debug("Querying HSP API chunk",
@@ -193,14 +193,14 @@ func (s *RouteService) fetchAndComputeMetrics(
 				defer func() { <-semaphore }() // Release semaphore
 
 				hspReq := external.HSPServiceMetricsRequest{
-					FromLoc:   query.OriginCRS,
-					ToLoc:     query.DestinationCRS,
-					FromTime:  fromTime,
-					ToTime:    toTime,
-					FromDate:  chunkStart.Format("2006-01-02"),
-					ToDate:    chunkEnd.Format("2006-01-02"),
-					Days:      days,
-					Tolerance: []string{"5", "10", "15"}, // Request 5, 10, 15 minute tolerances
+					FromLoc:  query.OriginCRS,
+					ToLoc:    query.DestinationCRS,
+					FromTime: fromTime,
+					ToTime:   toTime,
+					FromDate: chunkStart.Format("2006-01-02"),
+					ToDate:   chunkEnd.Format("2006-01-02"),
+					Days:     days,
+					// Note: tolerance parameter causes 30+ second timeouts, removed
 				}
 
 				s.logger.Debug("Querying HSP API chunk",
@@ -238,7 +238,10 @@ func (s *RouteService) fetchAndComputeMetrics(
 	}
 
 	// Aggregate and compute metrics from HSP responses
-	metrics := computeMetricsFromHSP(allResponses, routeID, query, startDate, endDate)
+	metrics, err := computeMetricsFromHSP(ctx, s.hspClient, allResponses, routeID, query, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute metrics: %w", err)
+	}
 
 	return metrics, nil
 }
@@ -337,11 +340,13 @@ func convertTimeFormat(timeStr string) string {
 }
 
 func computeMetricsFromHSP(
+	ctx context.Context,
+	hspClient *external.HSPClient,
 	hspResponses []*external.HSPServiceMetricsResponse,
 	routeID int,
 	query domain.RouteReliabilityQuery,
 	startDate, endDate time.Time,
-) *domain.RouteReliabilityMetrics {
+) (*domain.RouteReliabilityMetrics, error) {
 	// Aggregate all services from multiple responses
 	var allServices []external.HSPService
 	for i, hspResp := range hspResponses {
@@ -367,8 +372,24 @@ func computeMetricsFromHSP(
 			TotalServicesAnalyzed: 0,
 			ReliabilityScore:      0,
 			ComputedAt:            time.Now(),
-		}
+		}, nil
 	}
+
+	// Collect all RIDs and check for cancellations
+	var allRIDs []string
+	for _, service := range allServices {
+		allRIDs = append(allRIDs, service.ServiceAttributesMetrics.RIDs...)
+	}
+
+	fmt.Printf("Checking %d trains for cancellations...\n", len(allRIDs))
+
+	// Get cancellation count by checking serviceDetails for each RID
+	cancellationCount, err := getCancellationCount(ctx, hspClient, allRIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cancellation data: %w", err)
+	}
+
+	fmt.Printf("Found %d cancelled trains out of %d total\n", cancellationCount, len(allRIDs))
 
 	// Extract and aggregate metrics from all HSP services
 	// HSP provides metrics with different tolerance values (e.g., 0, 5, 10, 15 minutes)
@@ -475,16 +496,23 @@ func computeMetricsFromHSP(
 		onTimeRate = pct0To5Min
 	}
 
-	// Estimate cancellation rate (simplified - in reality we'd need service details)
-	// For MVP, assume 0 if we don't have this data
+	// Calculate cancellation rate from real data
+	totalTrains := len(allRIDs)
 	cancellationRate := 0.0
+	if totalTrains > 0 {
+		cancellationRate = float64(cancellationCount) / float64(totalTrains) * 100
+	}
 
-	// Calculate average delay (rough estimation from distribution)
-	avgDelay := (pct0To5Min * 2.5) + (pct5To15Min * 10) + (pct15To30Min * 22.5) + (pct30Plus * 45)
-	avgDelay = avgDelay / 100.0
-
-	// Calculate reliability score using the algorithm from the plan
-	reliabilityScore := calculateReliabilityScore(onTimeRate, cancellationRate, avgDelay, pct30Plus)
+	// Calculate reliability score (simplified without delay distribution)
+	// Score = (OnTime% × 0.6) + ((100 - Cancellation%) × 0.4)
+	// Simplified since we don't have accurate delay distribution data
+	reliabilityScore := (onTimeRate * 0.6) + ((100 - cancellationRate) * 0.4)
+	if reliabilityScore < 0 {
+		reliabilityScore = 0
+	}
+	if reliabilityScore > 100 {
+		reliabilityScore = 100
+	}
 
 	metrics := &domain.RouteReliabilityMetrics{
 		RouteID:               routeID,
@@ -497,19 +525,80 @@ func computeMetricsFromHSP(
 		TotalServicesAnalyzed: totalServices,
 		CancellationRate:      cancellationRate,
 		OnTimeRate:            onTimeRate,
-		AvgDelayMinutes:       avgDelay,
-		MedianDelayMinutes:    int(avgDelay), // Simplified
-		P95DelayMinutes:       int(pct30Plus * 0.5), // Rough estimate
-		P99DelayMinutes:       int(pct30Plus * 0.7), // Rough estimate
-		Pct0To5MinLate:        pct0To5Min,
-		Pct5To15MinLate:       pct5To15Min,
-		Pct15To30MinLate:      pct15To30Min,
-		Pct30PlusMinLate:      pct30Plus,
-		ReliabilityScore:      reliabilityScore,
-		ComputedAt:            time.Now(),
+		// Note: Delay distribution not available without tolerance data
+		// Frontend should not display delay distribution
+		AvgDelayMinutes:    0,
+		MedianDelayMinutes: 0,
+		P95DelayMinutes:    0,
+		P99DelayMinutes:    0,
+		Pct0To5MinLate:     0,
+		Pct5To15MinLate:    0,
+		Pct15To30MinLate:   0,
+		Pct30PlusMinLate:   0,
+		ReliabilityScore:   reliabilityScore,
+		ComputedAt:         time.Now(),
 	}
 
-	return metrics
+	return metrics, nil
+}
+
+func getCancellationCount(ctx context.Context, hspClient *external.HSPClient, rids []string) (int, error) {
+	if len(rids) == 0 {
+		return 0, nil
+	}
+
+	// Use worker pool to check RIDs in parallel (limit concurrency to avoid overwhelming API)
+	const maxConcurrency = 5
+	semaphore := make(chan struct{}, maxConcurrency)
+
+	type result struct {
+		cancelled bool
+		err       error
+	}
+
+	results := make(chan result, len(rids))
+
+	// Launch goroutines for each RID
+	for _, rid := range rids {
+		go func(r string) {
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			req := external.HSPServiceDetailsRequest{RID: r}
+			details, err := hspClient.GetServiceDetails(ctx, req)
+			if err != nil {
+				results <- result{cancelled: false, err: err}
+				return
+			}
+
+			// Check if any location was cancelled
+			cancelled := false
+			for _, loc := range details.ServiceAttributesDetails.Locations {
+				if loc.LateCanc {
+					cancelled = true
+					break
+				}
+			}
+
+			results <- result{cancelled: cancelled, err: nil}
+		}(rid)
+	}
+
+	// Collect results
+	cancelCount := 0
+	for i := 0; i < len(rids); i++ {
+		res := <-results
+		if res.err != nil {
+			// Log but don't fail - cancellation data is nice-to-have
+			fmt.Printf("Error getting service details: %v\n", res.err)
+			continue
+		}
+		if res.cancelled {
+			cancelCount++
+		}
+	}
+
+	return cancelCount, nil
 }
 
 func calculateReliabilityScore(onTimeRate, cancellationRate, avgDelay, p95Delay float64) float64 {
