@@ -265,14 +265,14 @@ func splitDateRange(start, end time.Time, maxDays int) []dateChunk {
 }
 
 func filterChunksByDayOfWeek(chunks []dateChunk, dayFilter string) []dateChunk {
-	// If "all", "weekday", "saturday", or "sunday", return all chunks
-	// These map directly to HSP API day types
-	if dayFilter == "all" || dayFilter == "weekday" || dayFilter == "saturday" || dayFilter == "sunday" {
+	// If "all" or "weekday", return all chunks
+	// "weekday" maps to WEEKDAY HSP API type which includes Mon-Fri
+	if dayFilter == "all" || dayFilter == "weekday" {
 		return chunks
 	}
 
-	// For specific weekdays (monday, tuesday, wednesday, thursday, friday),
-	// filter to only include chunks that match that day of week
+	// For specific days (monday through sunday), filter to only include
+	// chunks that match that day of week
 	var targetWeekday time.Weekday
 	switch dayFilter {
 	case "monday":
@@ -285,6 +285,10 @@ func filterChunksByDayOfWeek(chunks []dateChunk, dayFilter string) []dateChunk {
 		targetWeekday = time.Thursday
 	case "friday":
 		targetWeekday = time.Friday
+	case "saturday":
+		targetWeekday = time.Saturday
+	case "sunday":
+		targetWeekday = time.Sunday
 	default:
 		// Unknown filter, return all chunks
 		return chunks
