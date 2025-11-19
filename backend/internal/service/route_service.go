@@ -102,11 +102,15 @@ func (s *RouteService) fetchAndComputeMetrics(
 	// Calculate date chunks
 	dateChunks := splitDateRange(startDate, endDate, maxDaysPerQuery)
 
+	// Filter chunks by specific day of week if needed
+	dateChunks = filterChunksByDayOfWeek(dateChunks, query.DayFilter)
+
 	s.logger.Info("Querying HSP API",
 		zap.String("from", query.OriginCRS),
 		zap.String("to", query.DestinationCRS),
 		zap.Int("total_days", query.AnalysisDays),
 		zap.Int("chunks", len(dateChunks)),
+		zap.String("day_filter", query.DayFilter),
 	)
 
 	// HSP API requires days field with specific values: WEEKDAY, SATURDAY, or SUNDAY
@@ -226,9 +230,48 @@ func splitDateRange(start, end time.Time, maxDays int) []dateChunk {
 	return chunks
 }
 
+func filterChunksByDayOfWeek(chunks []dateChunk, dayFilter string) []dateChunk {
+	// If "all", "weekday", "saturday", or "sunday", return all chunks
+	// These map directly to HSP API day types
+	if dayFilter == "all" || dayFilter == "weekday" || dayFilter == "saturday" || dayFilter == "sunday" {
+		return chunks
+	}
+
+	// For specific weekdays (monday, tuesday, wednesday, thursday, friday),
+	// filter to only include chunks that match that day of week
+	var targetWeekday time.Weekday
+	switch dayFilter {
+	case "monday":
+		targetWeekday = time.Monday
+	case "tuesday":
+		targetWeekday = time.Tuesday
+	case "wednesday":
+		targetWeekday = time.Wednesday
+	case "thursday":
+		targetWeekday = time.Thursday
+	case "friday":
+		targetWeekday = time.Friday
+	default:
+		// Unknown filter, return all chunks
+		return chunks
+	}
+
+	// Filter chunks to only include dates matching the target weekday
+	var filtered []dateChunk
+	for _, chunk := range chunks {
+		if chunk.start.Weekday() == targetWeekday {
+			filtered = append(filtered, chunk)
+		}
+	}
+
+	return filtered
+}
+
 func convertDayFilter(filter string) *string {
 	switch filter {
-	case "weekday":
+	case "weekday", "monday", "tuesday", "wednesday", "thursday", "friday":
+		// All weekdays map to WEEKDAY
+		// The filtering by specific day happens in filterChunksByDayOfWeek
 		s := "WEEKDAY"
 		return &s
 	case "saturday":
