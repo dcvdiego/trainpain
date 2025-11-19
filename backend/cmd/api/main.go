@@ -90,7 +90,7 @@ func main() {
 		Addr:         fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port),
 		Handler:      router,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second, // Increased to handle large date range queries
+		WriteTimeout: 180 * time.Second, // Increased to 3 minutes for multiple sequential API calls
 		IdleTimeout:  120 * time.Second,
 	}
 

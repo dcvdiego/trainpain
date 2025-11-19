@@ -73,7 +73,7 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
       onFinish={handleSubmit}
       initialValues={{
         day_filter: 'weekday',
-        analysis_days: 30,
+        analysis_days: 7,
         time_range: [dayjs('07:00', 'HH:mm'), dayjs('09:00', 'HH:mm')],
       }}
     >
