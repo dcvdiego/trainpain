@@ -167,37 +167,70 @@ func (s *RouteService) fetchAndComputeMetrics(
 			}
 		}
 	} else {
-		// Single day type, but still chunk by date
+		// Single day type - process chunks in parallel for better performance
 		days := convertDayFilter(query.DayFilter)
 
-		for _, chunk := range dateChunks {
-			hspReq := external.HSPServiceMetricsRequest{
-				FromLoc:  query.OriginCRS,
-				ToLoc:    query.DestinationCRS,
-				FromTime: fromTime,
-				ToTime:   toTime,
-				FromDate: chunk.start.Format("2006-01-02"),
-				ToDate:   chunk.end.Format("2006-01-02"),
-				Days:     days,
+		// Use worker pool pattern to parallelize API calls
+		// Limit concurrency to avoid overwhelming the API while staying under rate limit
+		const maxConcurrency = 10
+		semaphore := make(chan struct{}, maxConcurrency)
+
+		type result struct {
+			resp  *external.HSPServiceMetricsResponse
+			index int
+			err   error
+		}
+
+		results := make(chan result, len(dateChunks))
+
+		// Launch goroutines for each chunk
+		for i, chunk := range dateChunks {
+			go func(idx int, chunkStart, chunkEnd time.Time) {
+				// Acquire semaphore
+				semaphore <- struct{}{}
+				defer func() { <-semaphore }() // Release semaphore
+
+				hspReq := external.HSPServiceMetricsRequest{
+					FromLoc:  query.OriginCRS,
+					ToLoc:    query.DestinationCRS,
+					FromTime: fromTime,
+					ToTime:   toTime,
+					FromDate: chunkStart.Format("2006-01-02"),
+					ToDate:   chunkEnd.Format("2006-01-02"),
+					Days:     days,
+				}
+
+				s.logger.Debug("Querying HSP API chunk",
+					zap.String("days", *days),
+					zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+					zap.String("time_window", fmt.Sprintf("%s to %s", hspReq.FromTime, hspReq.ToTime)),
+				)
+
+				hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+				if err == nil {
+					s.logger.Debug("HSP API response",
+						zap.String("days", *days),
+						zap.Int("services_returned", len(hspResp.Services)),
+					)
+				}
+
+				results <- result{resp: hspResp, index: idx, err: err}
+			}(i, chunk.start, chunk.end)
+		}
+
+		// Collect results in order
+		responseMap := make(map[int]*external.HSPServiceMetricsResponse)
+		for i := 0; i < len(dateChunks); i++ {
+			res := <-results
+			if res.err != nil {
+				return nil, fmt.Errorf("HSP API error: %w", res.err)
 			}
+			responseMap[res.index] = res.resp
+		}
 
-			s.logger.Debug("Querying HSP API chunk",
-				zap.String("days", *days),
-				zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
-				zap.String("time_window", fmt.Sprintf("%s to %s", hspReq.FromTime, hspReq.ToTime)),
-			)
-
-			hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
-			if err != nil {
-				return nil, fmt.Errorf("HSP API error: %w", err)
-			}
-
-			s.logger.Debug("HSP API response",
-				zap.String("days", *days),
-				zap.Int("services_returned", len(hspResp.Services)),
-			)
-
-			allResponses = append(allResponses, hspResp)
+		// Add responses in original order
+		for i := 0; i < len(dateChunks); i++ {
+			allResponses = append(allResponses, responseMap[i])
 		}
 	}
 
