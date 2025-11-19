@@ -296,11 +296,22 @@ func computeMetricsFromHSP(
 		totalTolerance30   int
 	)
 
+	// First, scan all services to see what tolerance values are present
+	toleranceValuesFound := make(map[string]bool)
+	for _, service := range allServices {
+		for _, metric := range service.Metrics {
+			if metric.GlobalTolerance {
+				toleranceValuesFound[metric.ToleranceValue] = true
+			}
+		}
+	}
+	fmt.Printf("Unique tolerance values found (global only): %v\n", toleranceValuesFound)
+
 	// Aggregate metrics from all services
 	for i, service := range allServices {
-		if i == 0 {
-			// Log first service to debug
-			fmt.Printf("First service has %d metrics\n", len(service.Metrics))
+		if i < 3 {
+			// Log first 3 services to debug
+			fmt.Printf("Service %d has %d metrics:\n", i, len(service.Metrics))
 			for j, metric := range service.Metrics {
 				fmt.Printf("  Metric %d: tolerance_value=%s, global_tolerance=%v, num_tolerance=%s, num_not_tolerance=%s\n",
 					j, metric.ToleranceValue, metric.GlobalTolerance, metric.NumTolerance, metric.NumNotTolerance)
