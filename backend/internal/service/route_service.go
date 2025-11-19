@@ -171,8 +171,9 @@ func (s *RouteService) fetchAndComputeMetrics(
 		days := convertDayFilter(query.DayFilter)
 
 		// Use worker pool pattern to parallelize API calls
-		// Limit concurrency to avoid overwhelming the API while staying under rate limit
-		const maxConcurrency = 10
+		// Limit concurrency to avoid overwhelming the API (3 workers = sweet spot)
+		// HSP API returns 503 if hit too hard, so keep concurrency low
+		const maxConcurrency = 3
 		semaphore := make(chan struct{}, maxConcurrency)
 
 		type result struct {

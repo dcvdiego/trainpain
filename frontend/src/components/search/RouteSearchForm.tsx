@@ -160,6 +160,8 @@ export const RouteSearchForm: React.FC<RouteSearchFormProps> = ({ onSearch, load
               <Option value={30}>Last 30 days</Option>
               <Option value={60}>Last 60 days</Option>
               <Option value={90}>Last 90 days</Option>
+              <Option value={180}>Last 6 months</Option>
+              <Option value={365}>Last year</Option>
             </Select>
           </Form.Item>
         </Col>
