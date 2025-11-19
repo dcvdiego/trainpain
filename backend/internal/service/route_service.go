@@ -131,13 +131,14 @@ func (s *RouteService) fetchAndComputeMetrics(
 			for _, dayType := range dayTypes {
 				go func(dt string, chunkStart, chunkEnd time.Time) {
 					hspReq := external.HSPServiceMetricsRequest{
-						FromLoc:  query.OriginCRS,
-						ToLoc:    query.DestinationCRS,
-						FromTime: fromTime,
-						ToTime:   toTime,
-						FromDate: chunkStart.Format("2006-01-02"),
-						ToDate:   chunkEnd.Format("2006-01-02"),
-						Days:     &dt,
+						FromLoc:   query.OriginCRS,
+						ToLoc:     query.DestinationCRS,
+						FromTime:  fromTime,
+						ToTime:    toTime,
+						FromDate:  chunkStart.Format("2006-01-02"),
+						ToDate:    chunkEnd.Format("2006-01-02"),
+						Days:      &dt,
+						Tolerance: []string{"5", "10", "15"}, // Request 5, 10, 15 minute tolerances
 					}
 
 					s.logger.Debug("Querying HSP API chunk",
@@ -192,13 +193,14 @@ func (s *RouteService) fetchAndComputeMetrics(
 				defer func() { <-semaphore }() // Release semaphore
 
 				hspReq := external.HSPServiceMetricsRequest{
-					FromLoc:  query.OriginCRS,
-					ToLoc:    query.DestinationCRS,
-					FromTime: fromTime,
-					ToTime:   toTime,
-					FromDate: chunkStart.Format("2006-01-02"),
-					ToDate:   chunkEnd.Format("2006-01-02"),
-					Days:     days,
+					FromLoc:   query.OriginCRS,
+					ToLoc:     query.DestinationCRS,
+					FromTime:  fromTime,
+					ToTime:    toTime,
+					FromDate:  chunkStart.Format("2006-01-02"),
+					ToDate:    chunkEnd.Format("2006-01-02"),
+					Days:      days,
+					Tolerance: []string{"5", "10", "15"}, // Request 5, 10, 15 minute tolerances
 				}
 
 				s.logger.Debug("Querying HSP API chunk",

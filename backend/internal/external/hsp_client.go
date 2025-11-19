@@ -32,13 +32,14 @@ func NewHSPClient(baseURL, username, password string) *HSPClient {
 }
 
 type HSPServiceMetricsRequest struct {
-	FromLoc  string  `json:"from_loc"`
-	ToLoc    string  `json:"to_loc"`
-	FromTime string  `json:"from_time"`
-	ToTime   string  `json:"to_time"`
-	FromDate string  `json:"from_date"`
-	ToDate   string  `json:"to_date"`
-	Days     *string `json:"days,omitempty"` // WEEKDAY, WEEKEND, or nil for all
+	FromLoc   string   `json:"from_loc"`
+	ToLoc     string   `json:"to_loc"`
+	FromTime  string   `json:"from_time"`
+	ToTime    string   `json:"to_time"`
+	FromDate  string   `json:"from_date"`
+	ToDate    string   `json:"to_date"`
+	Days      *string  `json:"days,omitempty"`      // WEEKDAY, SATURDAY, SUNDAY
+	Tolerance []string `json:"tolerance,omitempty"` // e.g. ["5", "10", "15"]
 }
 
 type HSPServiceMetricsResponse struct {
@@ -112,6 +113,11 @@ func (c *HSPClient) GetServiceMetrics(ctx context.Context, req HSPServiceMetrics
 	// Only include days if it's not nil
 	if req.Days != nil {
 		body["days"] = *req.Days
+	}
+
+	// Include tolerance values if specified
+	if len(req.Tolerance) > 0 {
+		body["tolerance"] = req.Tolerance
 	}
 
 	var result HSPServiceMetricsResponse
