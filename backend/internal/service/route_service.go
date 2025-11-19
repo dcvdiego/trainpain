@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/dcvdiego/trainpain-backend/internal/domain"
@@ -279,14 +280,23 @@ func computeMetricsFromHSP(
 	for _, service := range allServices {
 		for _, metric := range service.Metrics {
 			if metric.ToleranceValue == "5" && metric.GlobalTolerance {
-				totalTolerance5 += metric.NumTolerance
-				totalNotTolerance5 += metric.NumNotTolerance
+				// Parse string values to integers
+				if numTol, err := strconv.Atoi(metric.NumTolerance); err == nil {
+					totalTolerance5 += numTol
+				}
+				if numNotTol, err := strconv.Atoi(metric.NumNotTolerance); err == nil {
+					totalNotTolerance5 += numNotTol
+				}
 			}
 			if metric.ToleranceValue == "15" && metric.GlobalTolerance {
-				totalTolerance15 += metric.NumTolerance
+				if numTol, err := strconv.Atoi(metric.NumTolerance); err == nil {
+					totalTolerance15 += numTol
+				}
 			}
 			if metric.ToleranceValue == "30" && metric.GlobalTolerance {
-				totalTolerance30 += metric.NumTolerance
+				if numTol, err := strconv.Atoi(metric.NumTolerance); err == nil {
+					totalTolerance30 += numTol
+				}
 			}
 		}
 	}

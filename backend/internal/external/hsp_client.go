@@ -60,11 +60,11 @@ type HSPServiceAttributesMetrics struct {
 }
 
 type HSPMetric struct {
-	ToleranceValue  string  `json:"tolerance_value"` // API returns this as string, not int
-	NumNotTolerance int     `json:"num_not_tolerance"`
-	NumTolerance    int     `json:"num_tolerance"`
-	Percent         float64 `json:"percent"`
-	GlobalTolerance bool    `json:"global_tolerance"`
+	ToleranceValue  string `json:"tolerance_value"`  // API returns numeric values as strings
+	NumNotTolerance string `json:"num_not_tolerance"` // API returns numeric values as strings
+	NumTolerance    string `json:"num_tolerance"`     // API returns numeric values as strings
+	Percent         string `json:"percent"`           // API returns numeric values as strings
+	GlobalTolerance bool   `json:"global_tolerance"`
 }
 
 type HSPServiceDetailsRequest struct {
