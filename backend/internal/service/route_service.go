@@ -461,39 +461,14 @@ func computeMetricsFromHSP(
 	fmt.Printf("After aggregating: totalTolerance0=%d, totalNotTolerance0=%d, totalTolerance5=%d, totalNotTolerance5=%d, totalTolerance15=%d, totalTolerance30=%d\n",
 		totalTolerance0, totalNotTolerance0, totalTolerance5, totalNotTolerance5, totalTolerance15, totalTolerance30)
 
-	// Calculate percentages from aggregated totals
-	// Try to use tolerance=5 data first, fall back to tolerance=0 if not available
+	// Calculate on-time rate from tolerance=0 data (perfectly on time vs any delay)
+	// Note: We removed tolerance parameter support due to API timeouts
 	var totalServices int
-	var onTimeRate, pct0To5Min, pct5To15Min, pct15To30Min, pct30Plus float64
+	var onTimeRate float64
 
-	if totalTolerance5+totalNotTolerance5 > 0 {
-		// We have tolerance=5 data (trains within 5 min considered on time)
-		totalServices = totalTolerance5 + totalNotTolerance5
-		onTimeRate = float64(totalTolerance5) / float64(totalServices) * 100
-		pct0To5Min = onTimeRate
-		pct5To15Min = (float64(totalTolerance15-totalTolerance5) / float64(totalServices)) * 100
-		pct15To30Min = (float64(totalTolerance30-totalTolerance15) / float64(totalServices)) * 100
-		pct30Plus = 100.0 - (pct0To5Min + pct5To15Min + pct15To30Min)
-	} else if totalTolerance0+totalNotTolerance0 > 0 {
-		// We only have tolerance=0 data (perfectly on time vs any delay)
-		// We can't get exact delay distribution, so estimate based on typical UK rail patterns
+	if totalTolerance0+totalNotTolerance0 > 0 {
 		totalServices = totalTolerance0 + totalNotTolerance0
-
-		// Calculate percentage of perfectly on-time trains
-		perfectlyOnTime := float64(totalTolerance0) / float64(totalServices) * 100
-
-		// Calculate percentage of delayed trains
-		delayedPct := float64(totalNotTolerance0) / float64(totalServices) * 100
-
-		// Distribute delayed trains using realistic UK rail delay patterns:
-		// Of all delayed trains: ~60% are 0-5min, ~25% are 5-15min, ~10% are 15-30min, ~5% are 30+min
-		pct0To5Min = perfectlyOnTime + (delayedPct * 0.60) // Perfectly on time + most delays are minor
-		pct5To15Min = delayedPct * 0.25                      // Moderate delays
-		pct15To30Min = delayedPct * 0.10                     // Significant delays
-		pct30Plus = delayedPct * 0.05                        // Severe delays
-
-		// Calculate on-time rate (trains within 5 minutes, which is the industry standard)
-		onTimeRate = pct0To5Min
+		onTimeRate = float64(totalTolerance0) / float64(totalServices) * 100
 	}
 
 	// Calculate cancellation rate from real data
@@ -573,7 +548,7 @@ func getCancellationCount(ctx context.Context, hspClient *external.HSPClient, ri
 
 			// Check if any location was cancelled
 			cancelled := false
-			for _, loc := range details.ServiceAttributesDetails.Locations {
+			for _, loc := range details.Locations {
 				if loc.LateCanc {
 					cancelled = true
 					break

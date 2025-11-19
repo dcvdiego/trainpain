@@ -15,6 +15,7 @@ import (
 	"github.com/dcvdiego/trainpain-backend/internal/config"
 	"github.com/dcvdiego/trainpain-backend/internal/external"
 	"github.com/dcvdiego/trainpain-backend/internal/repository/postgres"
+	"github.com/dcvdiego/trainpain-backend/internal/scheduler"
 	"github.com/dcvdiego/trainpain-backend/internal/service"
 	"github.com/dcvdiego/trainpain-backend/pkg/logger"
 
@@ -62,6 +63,7 @@ func main() {
 	// Initialize repositories
 	stationRepo := postgres.NewStationRepository(db)
 	routeRepo := postgres.NewRouteRepository(db)
+	pineappleRepo := postgres.NewPineappleRepository(db)
 
 	// Initialize external API clients
 	var hspClient *external.HSPClient
@@ -74,16 +76,26 @@ func main() {
 		hspClient = external.NewHSPClient(cfg.HSP.BaseURL, "dummy", "dummy")
 	}
 
+	// Initialize Pineapple scraper
+	pineappleScraper := external.NewPineappleScraper()
+
 	// Initialize services
 	routeService := service.NewRouteService(stationRepo, routeRepo, hspClient, appLogger)
+	pineappleService := service.NewPineappleService(
+		pineappleRepo,
+		pineappleScraper,
+		cfg.WebPush.VAPIDPublicKey,
+		cfg.WebPush.VAPIDPrivateKey,
+	)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	stationHandler := handlers.NewStationHandler(stationRepo, appLogger)
 	routeHandler := handlers.NewRouteHandler(routeService, appLogger)
+	pineappleHandler := handlers.NewPineappleHandler(pineappleService, appLogger)
 
 	// Setup router
-	router := api.SetupRouter(healthHandler, stationHandler, routeHandler)
+	router := api.SetupRouter(healthHandler, stationHandler, routeHandler, pineappleHandler)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -93,6 +105,13 @@ func main() {
 		WriteTimeout: 180 * time.Second, // Increased to 3 minutes for multiple sequential API calls
 		IdleTimeout:  120 * time.Second,
 	}
+
+	// Start Pineapple scheduler in background
+	pineappleScheduler := scheduler.NewPineappleScheduler(pineappleService, appLogger)
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	defer schedulerCancel()
+
+	go pineappleScheduler.Start(schedulerCtx)
 
 	// Start server in goroutine
 	go func() {
@@ -108,6 +127,10 @@ func main() {
 	<-quit
 
 	appLogger.Info("shutting down server...")
+
+	// Stop scheduler
+	pineappleScheduler.Stop()
+	schedulerCancel()
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

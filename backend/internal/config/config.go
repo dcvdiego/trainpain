@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig
 	HSP      HSPConfig
 	TfL      TfLConfig
+	WebPush  WebPushConfig
 }
 
 type ServerConfig struct {
@@ -39,6 +40,11 @@ type HSPConfig struct {
 type TfLConfig struct {
 	AppID  string
 	AppKey string
+}
+
+type WebPushConfig struct {
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
 }
 
 func Load() (*Config, error) {
@@ -91,6 +97,10 @@ func Load() (*Config, error) {
 		TfL: TfLConfig{
 			AppID:  getEnv("TFL_APP_ID", viper.GetString("tfl.app_id")),
 			AppKey: getEnv("TFL_APP_KEY", viper.GetString("tfl.app_key")),
+		},
+		WebPush: WebPushConfig{
+			VAPIDPublicKey:  getEnv("VAPID_PUBLIC_KEY", viper.GetString("webpush.vapid_public_key")),
+			VAPIDPrivateKey: getEnv("VAPID_PRIVATE_KEY", viper.GetString("webpush.vapid_private_key")),
 		},
 	}
 

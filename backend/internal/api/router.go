@@ -10,6 +10,7 @@ func SetupRouter(
 	healthHandler *handlers.HealthHandler,
 	stationHandler *handlers.StationHandler,
 	routeHandler *handlers.RouteHandler,
+	pineappleHandler *handlers.PineappleHandler,
 ) *gin.Engine {
 	router := gin.Default()
 
@@ -28,6 +29,14 @@ func SetupRouter(
 
 		// Routes
 		v1.POST("/routes/reliability", routeHandler.GetReliability)
+
+		// Pineapple Dance Studios classes
+		v1.GET("/pineapple/classes", pineappleHandler.GetAllClasses)
+		v1.GET("/pineapple/classes/day/:day", pineappleHandler.GetClassesByDay)
+		v1.POST("/pineapple/subscribe", pineappleHandler.Subscribe)
+		v1.DELETE("/pineapple/subscribe/:id", pineappleHandler.Unsubscribe)
+		v1.GET("/pineapple/subscriptions", pineappleHandler.GetUserSubscriptions)
+		v1.POST("/pineapple/scrape", pineappleHandler.ScrapeClasses)
 	}
 
 	return router
