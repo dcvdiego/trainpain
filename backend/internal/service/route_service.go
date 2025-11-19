@@ -297,7 +297,16 @@ func computeMetricsFromHSP(
 	)
 
 	// Aggregate metrics from all services
-	for _, service := range allServices {
+	for i, service := range allServices {
+		if i == 0 {
+			// Log first service to debug
+			fmt.Printf("First service has %d metrics\n", len(service.Metrics))
+			for j, metric := range service.Metrics {
+				fmt.Printf("  Metric %d: tolerance_value=%s, global_tolerance=%v, num_tolerance=%s, num_not_tolerance=%s\n",
+					j, metric.ToleranceValue, metric.GlobalTolerance, metric.NumTolerance, metric.NumNotTolerance)
+			}
+		}
+
 		for _, metric := range service.Metrics {
 			if metric.ToleranceValue == "5" && metric.GlobalTolerance {
 				// Parse string values to integers
@@ -320,6 +329,9 @@ func computeMetricsFromHSP(
 			}
 		}
 	}
+
+	fmt.Printf("After aggregating: totalTolerance5=%d, totalNotTolerance5=%d, totalTolerance15=%d, totalTolerance30=%d\n",
+		totalTolerance5, totalNotTolerance5, totalTolerance15, totalTolerance30)
 
 	// Calculate percentages from aggregated totals
 	totalServices := totalTolerance5 + totalNotTolerance5
