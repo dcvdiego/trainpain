@@ -139,9 +139,16 @@ func (s *RouteService) fetchAndComputeMetrics(
 					s.logger.Debug("Querying HSP API chunk",
 						zap.String("days", dt),
 						zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+						zap.String("time_window", fmt.Sprintf("%s to %s", hspReq.FromTime, hspReq.ToTime)),
 					)
 
 					hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
+					if err == nil {
+						s.logger.Debug("HSP API response",
+							zap.String("days", dt),
+							zap.Int("services_returned", len(hspResp.Services)),
+						)
+					}
 					results <- result{resp: hspResp, dayType: dt, err: err}
 				}(dayType, chunk.start, chunk.end)
 			}
@@ -173,12 +180,19 @@ func (s *RouteService) fetchAndComputeMetrics(
 			s.logger.Debug("Querying HSP API chunk",
 				zap.String("days", *days),
 				zap.String("date_range", fmt.Sprintf("%s to %s", hspReq.FromDate, hspReq.ToDate)),
+				zap.String("time_window", fmt.Sprintf("%s to %s", hspReq.FromTime, hspReq.ToTime)),
 			)
 
 			hspResp, err := s.hspClient.GetServiceMetrics(ctx, hspReq)
 			if err != nil {
 				return nil, fmt.Errorf("HSP API error: %w", err)
 			}
+
+			s.logger.Debug("HSP API response",
+				zap.String("days", *days),
+				zap.Int("services_returned", len(hspResp.Services)),
+			)
+
 			allResponses = append(allResponses, hspResp)
 		}
 	}
@@ -247,9 +261,15 @@ func computeMetricsFromHSP(
 ) *domain.RouteReliabilityMetrics {
 	// Aggregate all services from multiple responses
 	var allServices []external.HSPService
-	for _, hspResp := range hspResponses {
+	for i, hspResp := range hspResponses {
 		allServices = append(allServices, hspResp.Services...)
+		if len(hspResp.Services) == 0 {
+			// Log when we get empty responses to help debug
+			fmt.Printf("WARNING: HSP response %d returned 0 services\n", i)
+		}
 	}
+
+	fmt.Printf("Total services aggregated from %d responses: %d\n", len(hspResponses), len(allServices))
 
 	if len(allServices) == 0 {
 		// No data available
